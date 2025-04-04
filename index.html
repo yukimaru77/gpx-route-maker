@@ -47,6 +47,9 @@
         <option value="driving-car">車</option>
       </select>
     </label>
+    <label>📄 ファイル名: 
+      <input id="filename" type="text" placeholder="例: my-route" size="20" />
+    </label>
     <button onclick="useCurrentLocation()">現在地を出発点に</button>
     <button onclick="resetMap()">リセット</button>
     <button onclick="downloadGPX()">GPXとして保存</button>
@@ -160,7 +163,10 @@
         const blob = new Blob([gpxContent], { type: "application/gpx+xml" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `route_${mode}.gpx`;
+        const rawName = document.getElementById('filename').value.trim();
+        const safeName = rawName !== '' ? rawName : `route_${mode}`;
+        a.download = `${safeName}.gpx`;
+
         a.click();
 
       } catch (err) {
