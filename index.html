@@ -4,23 +4,12 @@
   <meta charset="utf-8" />
   <title>ルートGPX生成</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <style>
     #map { height: 600px; }
-    .controls {
-      margin: 10px 0;
-    }
-    input, select, button {
-      padding: 6px;
-      margin-right: 5px;
-    }
-    #distanceDisplay {
-      margin-top: 10px;
-      font-weight: bold;
-    }
+    .controls { margin: 10px 0; }
+    input, select, button { padding: 6px; margin-right: 5px; }
+    #distanceDisplay { margin-top: 10px; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -28,17 +17,15 @@
 
   <p>
     このサイトでは、<strong>OpenRouteService</strong> のAPIを使って、<strong>徒歩・自転車・車の道なりルート</strong>を取得し、<strong>GPXファイルとして保存</strong>できます。<br>
-    以下のサイトから<strong>APIキーを取得</strong>し、貼り付けてください（1日あたり<strong>2000回まで無料</strong>で利用できます）：
-  </p>
-  <p>
+    以下のサイトから<strong>APIキーを取得</strong>し、貼り付けてください（1日あたり<strong>2000回まで無料</strong>で利用できます）：<br>
     🔑 <a href="https://account.heigit.org/manage/key" target="_blank">https://account.heigit.org/manage/key</a>
   </p>
 
   <div class="controls">
     <label>🔑 APIキー: 
       <input id="apiKey" type="text" size="40" placeholder="OpenRouteService APIキーを入力" />
-      <button onclick="saveApiKey()">💾 ブラウザに保存</button>
-      <button onclick="clearApiKey()">❌ ブラウザから削除</button>
+      <button onclick="saveApiKey()">💾 保存</button>
+      <button onclick="clearApiKey()">❌ 削除</button>
     </label>
     <label>🚗 モード: 
       <select id="mode">
@@ -50,12 +37,17 @@
     <label>📄 ファイル名: 
       <input id="filename" type="text" placeholder="例: my-route" size="20" />
     </label>
+    <label>📍 出発点: 
+      <input id="startCoord" type="text" placeholder="緯度,経度 例: 35.6,139.7" size="30" oninput="updateMarkerFromInput('start')" />
+    </label>
+    <label>🏁 到着点: 
+      <input id="endCoord" type="text" placeholder="緯度,経度 例: 35.7,139.8" size="30" oninput="updateMarkerFromInput('end')" />
+    </label>
     <button onclick="useCurrentLocation()">現在地を出発点に</button>
     <button onclick="resetMap()">リセット</button>
     <button onclick="downloadGPX()">GPXとして保存</button>
     <div id="distanceDisplay"></div>
   </div>
-  
 
   <div id="map"></div>
 
@@ -63,7 +55,7 @@
   <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
 
   <script>
-    const map = L.map('map').setView([35.681236, 139.767125], 13); // 東京駅中心
+    const map = L.map('map').setView([35.681236, 139.767125], 13); // 東京駅
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
@@ -74,9 +66,12 @@
 
     map.on('click', function(e) {
       if (waypoints.length < 2) {
-        const point = [e.latlng.lng, e.latlng.lat]; // 経度, 緯度
+        const point = [e.latlng.lng, e.latlng.lat];
+        const index = waypoints.length;
         waypoints.push(point);
-        addMarker(e.latlng, waypoints.length === 1 ? 'start' : 'end');
+        const type = index === 0 ? 'start' : 'end';
+        markers[index] = addMarker(e.latlng, type);
+        updateInputFields();
       }
     });
 
@@ -89,19 +84,40 @@
         fillOpacity: 1,
         weight: 2
       }).addTo(map).bindPopup(type === 'start' ? '出発点' : '到着点');
-      markers.push(marker);
+      return marker;
     }
 
-    function useCurrentLocation() {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const { latitude, longitude } = pos.coords;
-        if (waypoints.length < 2) {
-          waypoints.push([longitude, latitude]);
-          addMarker([latitude, longitude], waypoints.length === 1 ? 'start' : 'end');
-        }
-      }, () => {
-        alert("現在地を取得できませんでした。");
-      });
+    function updateInputFields() {
+      if (waypoints[0]) {
+        document.getElementById("startCoord").value = `${waypoints[0][1]},${waypoints[0][0]}`;
+      }
+      if (waypoints[1]) {
+        document.getElementById("endCoord").value = `${waypoints[1][1]},${waypoints[1][0]}`;
+      }
+    }
+
+    function updateMarkerFromInput(type) {
+      const input = document.getElementById(type === 'start' ? 'startCoord' : 'endCoord').value.trim();
+      const parts = input.split(',').map(s => s.trim());
+      if (parts.length !== 2) return;
+
+      const lat = parseFloat(parts[0]);
+      const lng = parseFloat(parts[1]);
+      if (isNaN(lat) || isNaN(lng)) return;
+
+      const index = type === 'start' ? 0 : 1;
+
+      while (waypoints.length <= index) {
+        waypoints.push(null);
+      }
+
+      waypoints[index] = [lng, lat];
+
+      if (markers[index]) {
+        map.removeLayer(markers[index]);
+      }
+
+      markers[index] = addMarker([lat, lng], type);
     }
 
     function resetMap() {
@@ -113,6 +129,8 @@
         routeLine = null;
       }
       document.getElementById('distanceDisplay').innerText = '';
+      document.getElementById('startCoord').value = '';
+      document.getElementById('endCoord').value = '';
     }
 
     async function downloadGPX() {
@@ -124,7 +142,7 @@
         return;
       }
       if (waypoints.length !== 2) {
-        alert("出発点と到着点をクリック（または現在地を使用）してください。");
+        alert("出発点と到着点を設定してください。");
         return;
       }
 
@@ -141,18 +159,12 @@
         });
 
         const coords = res.data.features[0].geometry.coordinates;
-        const distanceMeters = res.data.features[0].properties.summary.distance;
-        const distanceKm = (distanceMeters / 1000).toFixed(2);
-
+        const distanceKm = (res.data.features[0].properties.summary.distance / 1000).toFixed(2);
         document.getElementById('distanceDisplay').innerText = `🛣️ 距離: ${distanceKm} km`;
 
         if (routeLine) map.removeLayer(routeLine);
-        routeLine = L.polyline(coords.map(p => [p[1], p[0]]), {
-          color: 'blue',
-          weight: 5
-        }).addTo(map);
+        routeLine = L.polyline(coords.map(p => [p[1], p[0]]), { color: 'blue', weight: 5 }).addTo(map);
 
-        // GPX作成
         const gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="MyApp" xmlns="http://www.topografix.com/GPX/1/1">
   <trk><name>Route</name><trkseg>
@@ -163,42 +175,36 @@
         const blob = new Blob([gpxContent], { type: "application/gpx+xml" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        const rawName = document.getElementById('filename').value.trim();
-        const safeName = rawName !== '' ? rawName : `route_${mode}`;
-        a.download = `${safeName}.gpx`;
-
+        const filename = document.getElementById('filename').value.trim() || `route_${mode}`;
+        a.download = `${filename}.gpx`;
         a.click();
 
       } catch (err) {
         console.error(err);
-        alert("ルート取得に失敗しました。APIキーやルート、モードを確認してください。");
+        alert("ルート取得に失敗しました。APIキーや座標を確認してください。");
       }
     }
-    // ページ読み込み時にAPIキーを自動復元
+
+    function saveApiKey() {
+      const key = document.getElementById('apiKey').value.trim();
+      if (key) {
+        localStorage.setItem('ors_api_key', key);
+        alert("✅ APIキーを保存しました！");
+      }
+    }
+
+    function clearApiKey() {
+      localStorage.removeItem('ors_api_key');
+      document.getElementById('apiKey').value = '';
+      alert("🗑️ APIキーを削除しました。");
+    }
+
     window.onload = function () {
       const savedKey = localStorage.getItem('ors_api_key');
       if (savedKey) {
         document.getElementById('apiKey').value = savedKey;
       }
     };
-
-    // 保存ボタン機能
-    function saveApiKey() {
-      const key = document.getElementById('apiKey').value.trim();
-      if (key) {
-        localStorage.setItem('ors_api_key', key);
-        alert("✅ APIキーを保存しました！");
-      } else {
-        alert("APIキーが空です。");
-      }
-    }
-
-    // 削除ボタン機能
-    function clearApiKey() {
-      localStorage.removeItem('ors_api_key');
-      document.getElementById('apiKey').value = '';
-      alert("🗑️ APIキーを削除しました。");
-    }
   </script>
 </body>
 </html>
