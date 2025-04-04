@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>ルートGPX生成</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"
+  />
+  <style>
+    #map { height: 600px; }
+    .controls {
+      margin: 10px 0;
+    }
+    input, select, button {
+      padding: 6px;
+      margin-right: 5px;
+    }
+    #distanceDisplay {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h2>ルートをGPXで保存（OpenRouteService使用）</h2>
+
+  <p>
+    このサイトでは、<strong>OpenRouteService</strong> のAPIを使って、<strong>徒歩・自転車・車の道なりルート</strong>を取得し、<strong>GPXファイルとして保存</strong>できます。<br>
+    以下のサイトから<strong>APIキーを取得</strong>し、貼り付けてください（1日あたり<strong>2000回まで無料</strong>で利用できます）：
+  </p>
+  <p>
+    🔑 <a href="https://account.heigit.org/manage/key" target="_blank">https://account.heigit.org/manage/key</a>
+  </p>
+
+  <div class="controls">
+    <label>🔑 APIキー: <input id="apiKey" type="text" size="40" placeholder="OpenRouteService APIキーを入力" /></label>
+    <label>🚗 モード: 
+      <select id="mode">
+        <option value="foot-walking">徒歩</option>
+        <option value="cycling-regular">自転車</option>
+        <option value="driving-car">車</option>
+      </select>
+    </label>
+    <button onclick="useCurrentLocation()">現在地を出発点に</button>
+    <button onclick="resetMap()">リセット</button>
+    <button onclick="downloadGPX()">GPXとして保存</button>
+    <div id="distanceDisplay"></div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+  <script>
+    const map = L.map('map').setView([35.681236, 139.767125], 13); // 東京駅中心
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let waypoints = [];
+    let routeLine = null;
+    let markers = [];
+
+    map.on('click', function(e) {
+      if (waypoints.length < 2) {
+        const point = [e.latlng.lng, e.latlng.lat]; // 経度, 緯度
+        waypoints.push(point);
+        addMarker(e.latlng, waypoints.length === 1 ? 'start' : 'end');
+      }
+    });
+
+    function addMarker(latlng, type) {
+      const color = type === 'start' ? 'green' : 'red';
+      const marker = L.circleMarker(latlng, {
+        radius: 8,
+        color: 'white',
+        fillColor: color,
+        fillOpacity: 1,
+        weight: 2
+      }).addTo(map).bindPopup(type === 'start' ? '出発点' : '到着点');
+      markers.push(marker);
+    }
+
+    function useCurrentLocation() {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (waypoints.length < 2) {
+          waypoints.push([longitude, latitude]);
+          addMarker([latitude, longitude], waypoints.length === 1 ? 'start' : 'end');
+        }
+      }, () => {
+        alert("現在地を取得できませんでした。");
+      });
+    }
+
+    function resetMap() {
+      waypoints = [];
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+      if (routeLine) {
+        map.removeLayer(routeLine);
+        routeLine = null;
+      }
+      document.getElementById('distanceDisplay').innerText = '';
+    }
+
+    async function downloadGPX() {
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const mode = document.getElementById('mode').value;
+
+      if (!apiKey) {
+        alert("APIキーを入力してください。");
+        return;
+      }
+      if (waypoints.length !== 2) {
+        alert("出発点と到着点をクリック（または現在地を使用）してください。");
+        return;
+      }
+
+      const url = `https://api.openrouteservice.org/v2/directions/${mode}/geojson`;
+
+      try {
+        const res = await axios.post(url, {
+          coordinates: waypoints
+        }, {
+          headers: {
+            "Authorization": apiKey,
+            "Content-Type": "application/json"
+          }
+        });
+
+        const coords = res.data.features[0].geometry.coordinates;
+        const distanceMeters = res.data.features[0].properties.summary.distance;
+        const distanceKm = (distanceMeters / 1000).toFixed(2);
+
+        document.getElementById('distanceDisplay').innerText = `🛣️ 距離: ${distanceKm} km`;
+
+        if (routeLine) map.removeLayer(routeLine);
+        routeLine = L.polyline(coords.map(p => [p[1], p[0]]), {
+          color: 'blue',
+          weight: 5
+        }).addTo(map);
+
+        // GPX作成
+        const gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="MyApp" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><name>Route</name><trkseg>
+    ${coords.map(p => `<trkpt lat="${p[1]}" lon="${p[0]}" />`).join('\n')}
+  </trkseg></trk>
+</gpx>`;
+
+        const blob = new Blob([gpxContent], { type: "application/gpx+xml" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `route_${mode}.gpx`;
+        a.click();
+
+      } catch (err) {
+        console.error(err);
+        alert("ルート取得に失敗しました。APIキーやルート、モードを確認してください。");
+      }
+    }
+  </script>
+</body>
+</html>
