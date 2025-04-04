@@ -35,7 +35,11 @@
   </p>
 
   <div class="controls">
-    <label>🔑 APIキー: <input id="apiKey" type="text" size="40" placeholder="OpenRouteService APIキーを入力" /></label>
+    <label>🔑 APIキー: 
+      <input id="apiKey" type="text" size="40" placeholder="OpenRouteService APIキーを入力" />
+      <button onclick="saveApiKey()">💾 保存</button>
+      <button onclick="clearApiKey()">❌ 削除</button>
+    </label>
     <label>🚗 モード: 
       <select id="mode">
         <option value="foot-walking">徒歩</option>
@@ -48,6 +52,7 @@
     <button onclick="downloadGPX()">GPXとして保存</button>
     <div id="distanceDisplay"></div>
   </div>
+  
 
   <div id="map"></div>
 
@@ -162,6 +167,31 @@
         console.error(err);
         alert("ルート取得に失敗しました。APIキーやルート、モードを確認してください。");
       }
+    }
+    // ページ読み込み時にAPIキーを自動復元
+    window.onload = function () {
+      const savedKey = localStorage.getItem('ors_api_key');
+      if (savedKey) {
+        document.getElementById('apiKey').value = savedKey;
+      }
+    };
+
+    // 保存ボタン機能
+    function saveApiKey() {
+      const key = document.getElementById('apiKey').value.trim();
+      if (key) {
+        localStorage.setItem('ors_api_key', key);
+        alert("✅ APIキーを保存しました！");
+      } else {
+        alert("APIキーが空です。");
+      }
+    }
+
+    // 削除ボタン機能
+    function clearApiKey() {
+      localStorage.removeItem('ors_api_key');
+      document.getElementById('apiKey').value = '';
+      alert("🗑️ APIキーを削除しました。");
     }
   </script>
 </body>
