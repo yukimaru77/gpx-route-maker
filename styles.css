@@ -1,0 +1,17 @@
+#map { 
+    height: 600px; 
+}
+
+.controls { 
+    margin: 10px 0; 
+}
+
+input, select, button { 
+    padding: 6px; 
+    margin-right: 5px; 
+}
+
+#distanceDisplay { 
+    margin-top: 10px; 
+    font-weight: bold; 
+} 
